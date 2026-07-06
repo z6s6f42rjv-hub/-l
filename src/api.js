@@ -2,21 +2,21 @@ export function buildSystemPrompt(gameState) {
   const { plaintiff, defendant, trouble, notes, diff, exchanges } = gameState;
   const dn =
     diff === 'kids'
-      ? '平易な言葉で話す。難しい法律用語は避ける。'
+      ? '平易な言葉で話す。難しい専門用語は避ける。'
       : diff === 'pro'
-      ? '民法・刑法の条文番号を適宜引用し、正式な法廷語で話す。'
-      : '日常的な言葉を基本とする。法律用語は必要に応じて使う。';
+      ? 'やや丁寧な言葉遣いで、心理学・コミュニケーション論の観点も交えて話す。'
+      : '日常的な言葉を基本とする。';
   const ex = (exchanges || [])
     .map(
       (e, i) =>
         `[${i + 1}] ${e.role === 'plaintiff' ? plaintiff : defendant}（${
-          e.role === 'plaintiff' ? '原告' : '被告'
-        }）への質問：「${e.question || '（冒頭陳述）'}」→ 回答：「${e.answer}」`
+          e.role === 'plaintiff' ? '申立人' : '相手方'
+        }）への質問：「${e.question || '（冒頭）'}」→ 回答：「${e.answer}」`
     )
     .join('\n');
-  return `あなたは公正なAI裁判長です。事件の全貌を明らかにしながら審理を進めてください。\n\n事件：${plaintiff}が${defendant}を訴えた。内容：「${trouble}」。補足：「${
+  return `あなたは経験豊富なAI調停員です。両者が互いを理解し、納得できる合意に至るよう支援することが目的です。\n\n相談内容：${plaintiff}と${defendant}の間のもめ事。内容：「${trouble}」。補足：「${
     notes || 'なし'
-  }」\n\nこれまでの陳述：\n${ex || '（まだなし）'}\n\n言葉のスタイル：${dn}\n方針：真面目で公正な裁判長として振る舞う。ユーモアは最小限。断定より事実確認を優先する。\n返答はJSONのみ。`;
+  }」\n\nこれまでの発言：\n${ex || '（まだなし）'}\n\n言葉のスタイル：${dn}\n方針：中立・共感的。どちらが正しいかではなく、それぞれの気持ち・ニーズ・背景を引き出すことを優先する。責めるのではなく理解を促す。返答はJSONのみ。`;
 }
 
 export async function callAI(systemPrompt, history, instruction, format) {
@@ -29,7 +29,7 @@ export async function callAI(systemPrompt, history, instruction, format) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 1200,
       system: systemPrompt,
       messages,
     }),

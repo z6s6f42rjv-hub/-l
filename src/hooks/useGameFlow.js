@@ -4,13 +4,13 @@ import { buildSystemPrompt, callAI } from '../api';
 import { getOrCreateRoom, saveCase, updateCase, saveExchange } from '../lib/supabase';
 
 function genCaseNum() {
-  return `令和7年（ネ）第${Math.floor(Math.random() * 900 + 100)}号`;
+  return `調停第${Math.floor(Math.random() * 900 + 100)}号`;
 }
 
 export function useGameFlow(setScreen, roomId) {
   const [messages, setMessages] = useState([]);
   const [courtAction, setCourtAction] = useState(null);
-  const [stageLabel, setStageLabel] = useState('開廷');
+  const [stageLabel, setStageLabel] = useState('開始');
   const [roundDots, setRoundDots] = useState({ current: 0, max: 1 });
   const [passState, setPassState] = useState(null);
   const [inputState, setInputState] = useState(null);
@@ -19,12 +19,13 @@ export function useGameFlow(setScreen, roomId) {
     plaintiff: '', defendant: '', trouble: '', notes: '',
     mode: 'speed', diff: 'normal',
     caseNum: '', caseId: null,
-    judgeEmoji: '👨‍⚖️', judgeName: '',
+    judgeEmoji: '🤝', judgeName: '',
     history: [],
     round: 0, maxRounds: 1,
     exchanges: [],
     appealCount: 0,
     verdict: null,
+    lastAnalysis: '',
   });
 
   const G = gameRef.current;
@@ -38,9 +39,11 @@ export function useGameFlow(setScreen, roomId) {
     setScreen('pass');
   }, [setScreen]);
 
-  const showInputScreen = useCallback((role, questionText, labelText, cb) => {
-    setInputState({ role, questionText, labelText, cb });
+  const showInputScreen = useCallback((role, questionText, labelText, choices, cb) => {
+    setInputState({ role, questionText, labelText, choices: choices || [] });
     setScreen('input');
+    // cbをrefで保持してスクリーン遷移後も使える状態にする
+    setInputState(prev => ({ ...prev, cb }));
   }, [setScreen]);
 
   const ai = useCallback(async (instruction, format) => {
@@ -56,6 +59,16 @@ export function useGameFlow(setScreen, roomId) {
     }
   }, [G]);
 
+  // 質問に対する選択肢を生成
+  const genChoices = useCallback(async (role, question) => {
+    const name = role === 'plaintiff' ? G.plaintiff : G.defendant;
+    const p = await ai(
+      `調停員として、${name}が「${question}」に対して答えるとしたら、どんな気持ち・立場・考えが考えられるか、5つの選択肢を生成してください。短く（20字以内）、具体的に、バリエーション豊かに。`,
+      '{"choices":["選択肢1","選択肢2","選択肢3","選択肢4","選択肢5"]}'
+    );
+    return p?.choices || [];
+  }, [G, ai]);
+
   const runOpening = useCallback(async (formData, room) => {
     const effectiveRoom = room || roomId;
     Object.assign(G, {
@@ -69,33 +82,26 @@ export function useGameFlow(setScreen, roomId) {
       round: 0, appealCount: 0,
       history: [], exchanges: [], verdict: null,
       caseNum: genCaseNum(),
-      caseId: null,
+      caseId: null, lastAnalysis: '',
     });
     const j = JUDGES[Math.floor(Math.random() * JUDGES.length)];
     G.judgeEmoji = j.emoji;
     G.judgeName = j.name;
 
-    // Supabaseにケース保存
     if (effectiveRoom) {
       try {
         await getOrCreateRoom(effectiveRoom);
         const c = await saveCase(effectiveRoom, {
-          plaintiff: G.plaintiff,
-          defendant: G.defendant,
-          trouble: G.trouble,
-          notes: G.notes,
-          mode: G.mode,
-          diff: G.diff,
+          plaintiff: G.plaintiff, defendant: G.defendant,
+          trouble: G.trouble, notes: G.notes, mode: G.mode, diff: G.diff,
         });
         G.caseId = c.id;
-      } catch (e) {
-        console.error('Supabase save error:', e);
-      }
+      } catch (e) { console.error('Supabase:', e); }
     }
 
     setMessages([]);
     setCourtAction(null);
-    setStageLabel('開廷');
+    setStageLabel('開始');
     setRoundDots({ current: 0, max: G.maxRounds });
     setScreen('court');
 
@@ -103,11 +109,11 @@ export function useGameFlow(setScreen, roomId) {
     appendMsg({ type: 'loading', id: 'open' });
 
     const p = await ai(
-      '裁判長として開廷を宣言し、事件の概要を確認してください。この場では両者が対等に意見を述べる機会があることを強調してください。（3文以内）',
-      '{"speech":"裁判長の開廷の言葉"}'
+      'AI調停員として調停の開始を宣言してください。この場はお互いを責める場ではなく、それぞれの気持ちを聞いてもらえる場だということを伝えてください。（3文以内）',
+      '{"speech":"調停員の開始の言葉"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'open')));
-    if (p) appendMsg({ type: 'judge', text: p.speech || '開廷します。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
+    if (p) appendMsg({ type: 'judge', text: p.speech || '調停を開始します。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
 
     setCourtAction({ type: 'start-round' });
   }, [G, ai, appendMsg, setScreen, roomId]);
@@ -119,103 +125,111 @@ export function useGameFlow(setScreen, roomId) {
     setCourtAction(null);
 
     appendMsg({ type: 'loading', id: 'round' });
-    const focusNote = G.lastAnalysis ? `前のターンの分析：「${G.lastAnalysis}」。この論点を踏まえて質問を考えること。` : '';
+    const focusNote = G.lastAnalysis ? `前の分析：「${G.lastAnalysis}」。この点を踏まえること。` : '';
     const plan = await ai(
-      `第${G.round}ターンの審理を開始します。${focusNote}まず原告「${G.plaintiff}」から話を聞きます。核心を突く質問を1つ。相手の気持ちや意図を掘り下げる質問が望ましい。`,
-      '{"plaintiff_question":"原告への質問","note":"この質問の意図（内部メモ）"}'
+      `第${G.round}ターンを始めます。${focusNote}まず${G.plaintiff}（申立人）に質問してください。「なぜそう感じたのか」「本当に求めているものは何か」を引き出す共感的な質問を1つ。`,
+      '{"plaintiff_question":"申立人への質問"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'round')));
-    const pq = plan?.plaintiff_question || '今回の件について、あなたの立場から説明してください。';
+    const pq = plan?.plaintiff_question || '今回のことについて、あなたがどう感じているか教えてください。';
     appendMsg({ type: 'judge', text: pq, judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
 
-    showPassScreen('plaintiff', `${G.plaintiff}（原告）さんへ質問があります。\n端末を渡してください。画面は見せないように。`, () => {
-      showInputScreen('plaintiff', pq, '原告としての主張・回答を入力してください', async (ans) => {
+    appendMsg({ type: 'loading', id: 'choices-p' });
+    const choicesP = await genChoices('plaintiff', pq);
+    setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'choices-p')));
+
+    showPassScreen('plaintiff', `${G.plaintiff}さんに質問があります。\n端末を渡してください。`, () => {
+      showInputScreen('plaintiff', pq, '一番近いものを選んでください（補足もできます）', choicesP, async (ans) => {
         G.exchanges.push({ role: 'plaintiff', question: pq, answer: ans, round: G.round });
         if (G.caseId) saveExchange(G.caseId, { role: 'plaintiff', question: pq, answer: ans }).catch(() => {});
         setScreen('court');
-        appendMsg({ type: 'sys', text: `${G.plaintiff}（原告）が回答を提出しました` });
+        appendMsg({ type: 'sys', text: `${G.plaintiff}が回答しました` });
         appendMsg({ type: 'plaintiff', name: G.plaintiff, text: ans });
         await askDefendant(ans);
       });
     });
-  }, [G, ai, appendMsg, showPassScreen, showInputScreen, setScreen]);
+  }, [G, ai, genChoices, appendMsg, showPassScreen, showInputScreen, setScreen]);
 
   const askDefendant = useCallback(async (pAnswer) => {
     appendMsg({ type: 'loading', id: 'dq' });
     const p = await ai(
-      `原告「${G.plaintiff}」は「${pAnswer}」と述べました。この回答を踏まえ、被告「${G.defendant}」に対する質問を1つ生成してください。単なる反論ではなく、被告の気持ちや背景を引き出す質問にしてください。`,
-      '{"defendant_question":"被告への質問"}'
+      `${G.plaintiff}は「${pAnswer}」と述べました。これを受けて、${G.defendant}（相手方）に質問してください。相手の発言を否定せず、${G.defendant}自身の気持ちや背景を引き出す共感的な質問を1つ。`,
+      '{"defendant_question":"相手方への質問"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'dq')));
-    const dq = p?.defendant_question || `${G.defendant}さん、この件についてどう説明しますか？`;
+    const dq = p?.defendant_question || `${G.defendant}さん、この件についてどう感じていますか？`;
     appendMsg({ type: 'judge', text: dq, judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
 
-    showPassScreen('defendant', `${G.defendant}（被告）さんへ質問があります。\n端末を渡してください。画面は見せないように。`, () => {
-      showInputScreen('defendant', dq, '被告としての主張・回答を入力してください', async (ans) => {
+    appendMsg({ type: 'loading', id: 'choices-d' });
+    const choicesD = await genChoices('defendant', dq);
+    setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'choices-d')));
+
+    showPassScreen('defendant', `${G.defendant}さんに質問があります。\n端末を渡してください。`, () => {
+      showInputScreen('defendant', dq, '一番近いものを選んでください（補足もできます）', choicesD, async (ans) => {
         G.exchanges.push({ role: 'defendant', question: dq, answer: ans, round: G.round });
         if (G.caseId) saveExchange(G.caseId, { role: 'defendant', question: dq, answer: ans }).catch(() => {});
         setScreen('court');
-        appendMsg({ type: 'sys', text: `${G.defendant}（被告）が回答を提出しました` });
+        appendMsg({ type: 'sys', text: `${G.defendant}が回答しました` });
         appendMsg({ type: 'defendant', name: G.defendant, text: ans });
         await afterRound();
       });
     });
-  }, [G, ai, appendMsg, showPassScreen, showInputScreen, setScreen]);
+  }, [G, ai, genChoices, appendMsg, showPassScreen, showInputScreen, setScreen]);
 
   const afterRound = useCallback(async () => {
     appendMsg({ type: 'loading', id: 'eval' });
     const p = await ai(
-      '両者の回答を受けて、裁判長として中立的な立場で分析してください。①それぞれの主張の核心、②まだ明らかになっていない論点、③次に掘り下げるべきポイントを整理した上で、両者に向けたコメントをしてください。',
-      '{"speech":"裁判長のコメント（3文以内）","next_focus":"次のターンで掘り下げるべき論点（内部メモ）","needs_more":"まだ不明な点があればtrue、なければfalse"}'
+      '両者の発言を受けて、調停員として整理してください。①それぞれが感じていること・求めていること、②お互いに共通している部分、③まだ話し合えていない論点。その上で両者に向けた共感的なコメントをしてください。',
+      '{"speech":"調停員のコメント（3文以内）","next_focus":"次に深掘りすべき論点（内部メモ）","needs_more":"まだ話し合うべきことがあればtrue"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'eval')));
-    if (p) appendMsg({ type: 'judge', text: p.speech || '両者の主張を確認しました。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
+    if (p) appendMsg({ type: 'judge', text: p.speech || '両者の気持ちを確認しました。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
 
     G.lastAnalysis = p?.next_focus || '';
 
     if (G.round < G.maxRounds) {
-      if (p?.needs_more !== false) {
-        setCourtAction({ type: 'next-round', round: G.round + 1 });
-      } else {
-        setCourtAction({ type: 'next-or-final', round: G.round + 1 });
-      }
+      setCourtAction(p?.needs_more !== false
+        ? { type: 'next-round', round: G.round + 1 }
+        : { type: 'next-or-final', round: G.round + 1 });
     } else {
       setCourtAction({ type: 'go-lawyer' });
     }
   }, [G, ai, appendMsg]);
 
-  // AI弁護士フェーズ
   const runLawyer = useCallback(async () => {
-    setStageLabel('AI弁護士');
+    setStageLabel('気持ちの整理');
     setCourtAction(null);
-    appendMsg({ type: 'judge', text: '最終弁論の前に、それぞれにAI弁護士がアドバイスをします。まず原告からどうぞ。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
+    appendMsg({ type: 'judge', text: '最終的な気持ちを伝える前に、それぞれが本当に伝えたいことを整理する時間を設けます。まずはあなたから。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
 
     appendMsg({ type: 'loading', id: 'law-p' });
     const advP = await ai(
-      `あなたは原告「${G.plaintiff}」の弁護士です。これまでの審理内容を踏まえ、最終弁論で原告が主張すべき最も重要なポイントを3つアドバイスしてください。相手への共感も忘れずに。`,
-      '{"advice":"弁護士からのアドバイス（箇条書き3つ、計200字以内）","key_point":"最も重要な一言"}'
+      `${G.plaintiff}の立場から、これまでの話し合いを踏まえて「本当に伝えたいこと」「相手に理解してほしいこと」「自分が変えられること」を整理してアドバイスしてください。`,
+      '{"advice":"整理された気持ち（箇条書き3点、200字以内）","key_point":"最も大切な一言"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'law-p')));
 
-    showPassScreen('plaintiff', `${G.plaintiff}（原告）さんへ。\nAI弁護士からのアドバイスがあります。\n端末を渡してください（被告は見ないでください）。`, () => {
-      showInputScreen('plaintiff', advP?.advice || 'あなたの最も重要な気持ちを伝えてください。', `AI弁護士のアドバイス: ${advP?.key_point || ''}`, async (ans) => {
-        G.exchanges.push({ role: 'plaintiff', question: '最終弁論（AI弁護士サポート）', answer: ans, round: 'final' });
-        if (G.caseId) saveExchange(G.caseId, { role: 'plaintiff', question: '最終弁論', answer: ans }).catch(() => {});
+    const choicesP = await genChoices('plaintiff', advP?.key_point || '最終的に伝えたいことは？');
+
+    showPassScreen('plaintiff', `${G.plaintiff}さんへ。\n気持ちを整理する時間です。\n端末を渡してください。`, () => {
+      showInputScreen('plaintiff', advP?.advice || '本当に伝えたいことは何ですか？', `ヒント: ${advP?.key_point || ''}`, choicesP, async (ans) => {
+        G.exchanges.push({ role: 'plaintiff', question: '最終発言', answer: ans, round: 'final' });
+        if (G.caseId) saveExchange(G.caseId, { role: 'plaintiff', question: '最終発言', answer: ans }).catch(() => {});
         setScreen('court');
         appendMsg({ type: 'plaintiff', name: G.plaintiff, text: ans });
 
-        // 被告AI弁護士
         appendMsg({ type: 'loading', id: 'law-d' });
         const advD = await ai(
-          `あなたは被告「${G.defendant}」の弁護士です。これまでの審理と原告の最終弁論「${ans}」を踏まえ、最終弁論で被告が主張すべき最も重要なポイントを3つアドバイスしてください。相手への共感も忘れずに。`,
-          '{"advice":"弁護士からのアドバイス（箇条書き3つ、計200字以内）","key_point":"最も重要な一言"}'
+          `${G.plaintiff}の最終発言「${ans}」を踏まえ、${G.defendant}の立場から「本当に伝えたいこと」「相手に理解してほしいこと」「自分が変えられること」を整理してアドバイスしてください。`,
+          '{"advice":"整理された気持ち（箇条書き3点、200字以内）","key_point":"最も大切な一言"}'
         );
         setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'law-d')));
 
-        showPassScreen('defendant', `${G.defendant}（被告）さんへ。\nAI弁護士からのアドバイスがあります。\n端末を渡してください（原告は見ないでください）。`, () => {
-          showInputScreen('defendant', advD?.advice || 'あなたの最も重要な気持ちを伝えてください。', `AI弁護士のアドバイス: ${advD?.key_point || ''}`, async (ans2) => {
-            G.exchanges.push({ role: 'defendant', question: '最終弁論（AI弁護士サポート）', answer: ans2, round: 'final' });
-            if (G.caseId) saveExchange(G.caseId, { role: 'defendant', question: '最終弁論', answer: ans2 }).catch(() => {});
+        const choicesD = await genChoices('defendant', advD?.key_point || '最終的に伝えたいことは？');
+
+        showPassScreen('defendant', `${G.defendant}さんへ。\n気持ちを整理する時間です。\n端末を渡してください。`, () => {
+          showInputScreen('defendant', advD?.advice || '本当に伝えたいことは何ですか？', `ヒント: ${advD?.key_point || ''}`, choicesD, async (ans2) => {
+            G.exchanges.push({ role: 'defendant', question: '最終発言', answer: ans2, round: 'final' });
+            if (G.caseId) saveExchange(G.caseId, { role: 'defendant', question: '最終発言', answer: ans2 }).catch(() => {});
             setScreen('court');
             appendMsg({ type: 'defendant', name: G.defendant, text: ans2 });
             setCourtAction({ type: 'go-verdict' });
@@ -223,29 +237,24 @@ export function useGameFlow(setScreen, roomId) {
         });
       });
     });
-  }, [G, ai, appendMsg, showPassScreen, showInputScreen, setScreen]);
+  }, [G, ai, genChoices, appendMsg, showPassScreen, showInputScreen, setScreen]);
 
   const runFinal = useCallback(async () => {
-    setStageLabel('最終弁論');
+    setStageLabel('最終発言');
     setCourtAction(null);
-    appendMsg({ type: 'judge', text: `最終弁論に移ります。${G.plaintiff}（原告）から最後の主張を聞きます。`, judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
+    appendMsg({ type: 'judge', text: `最後にそれぞれの気持ちを伝えてもらいます。${G.plaintiff}さんからどうぞ。`, judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
 
-    showPassScreen('plaintiff', `${G.plaintiff}（原告）さん、最終弁論の時間です。\n端末を渡してください。`, () => {
-      showInputScreen('plaintiff', null, '最後の主張を述べてください', async (ans) => {
-        G.exchanges.push({ role: 'plaintiff', question: '最終弁論', answer: ans, round: 'final' });
+    const choicesP = await genChoices('plaintiff', '今の気持ち・相手に伝えたいことは？');
+    showPassScreen('plaintiff', `${G.plaintiff}さん、最後の発言の時間です。\n端末を渡してください。`, () => {
+      showInputScreen('plaintiff', null, '最後に伝えたいことを選んでください', choicesP, async (ans) => {
+        G.exchanges.push({ role: 'plaintiff', question: '最終発言', answer: ans, round: 'final' });
         setScreen('court');
         appendMsg({ type: 'plaintiff', name: G.plaintiff, text: ans });
-        appendMsg({ type: 'loading', id: 'df' });
-        const p = await ai(
-          `原告の最終弁論「${ans}」を踏まえ、被告への最終弁論を促す一言を述べてください。`,
-          '{"speech":"裁判長のひとこと（1文）"}'
-        );
-        setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'df')));
-        if (p) appendMsg({ type: 'judge', text: p.speech || `${G.defendant}（被告）の最終弁論を聞きます。`, judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
 
-        showPassScreen('defendant', `${G.defendant}（被告）さん、最終弁論の時間です。\n端末を渡してください。`, () => {
-          showInputScreen('defendant', null, '最後の主張を述べてください', async (ans2) => {
-            G.exchanges.push({ role: 'defendant', question: '最終弁論', answer: ans2, round: 'final' });
+        const choicesD = await genChoices('defendant', '今の気持ち・相手に伝えたいことは？');
+        showPassScreen('defendant', `${G.defendant}さん、最後の発言の時間です。\n端末を渡してください。`, () => {
+          showInputScreen('defendant', null, '最後に伝えたいことを選んでください', choicesD, async (ans2) => {
+            G.exchanges.push({ role: 'defendant', question: '最終発言', answer: ans2, round: 'final' });
             setScreen('court');
             appendMsg({ type: 'defendant', name: G.defendant, text: ans2 });
             setCourtAction({ type: 'go-verdict' });
@@ -253,34 +262,35 @@ export function useGameFlow(setScreen, roomId) {
         });
       });
     });
-  }, [G, ai, appendMsg, showPassScreen, showInputScreen, setScreen]);
+  }, [G, ai, genChoices, appendMsg, showPassScreen, showInputScreen, setScreen]);
 
   const runVerdict = useCallback(async () => {
-    setStageLabel('判決');
+    setStageLabel('調停案');
     setCourtAction(null);
-    appendMsg({ type: 'judge', text: '全員起立。ただいまより判決を言い渡します。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
+    appendMsg({ type: 'judge', text: '両者の気持ちを十分に聞きました。調停案をまとめます。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
     appendMsg({ type: 'loading', id: 'vd' });
 
     const summary = G.exchanges.map((e) => `${e.role === 'plaintiff' ? G.plaintiff : G.defendant}：「${e.answer}」`).join(' / ');
     const p = await ai(
-      `全ての主張を総合評価し、判決を下してください。\n陳述の要約：${summary}\n\nカップル間のもめ事として、どちらが正当かだけでなく、お互いが今後どう関係を改善できるかも含めた建設的な判決にしてください。控訴${G.appealCount}回目。`,
-      '{"speech":"判決の宣言（2〜3文）","winner":"plaintiff または defendant","reason":"判決理由（3〜4文）","plaintiff_score":60,"defendant_score":40,"order":"裁判所からの命令（1〜2文）","advice":"カップルへのアドバイス（2〜3文）","law_note":"関連する一般的な権利・義務の解説（2〜3文）"}'
+      `全ての発言を踏まえて調停案をまとめてください。\n発言の要約：${summary}\n\n勝ち負けではなく、両者が納得できる合意・歩み寄りの提案をしてください。`,
+      '{"speech":"調停員の締めの言葉（2〜3文）","plaintiff_feeling":"申立人の気持ちの要約（1文）","defendant_feeling":"相手方の気持ちの要約（1文）","common_ground":"お互いに共通していた部分（1文）","proposal":"具体的な調停案・合意提案（2〜3文）","advice":"今後の関係改善へのアドバイス（2文）"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'vd')));
 
     const vd = p || {
-      speech: '判決を言い渡します。', winner: 'plaintiff',
-      reason: '原告の主張がより正当と判断します。', plaintiff_score: 60, defendant_score: 40,
-      order: `${G.defendant}は${G.plaintiff}に誠意ある謝罪を行うこと。`,
-      advice: 'お互いの気持ちを話し合う時間を設けてください。',
-      law_note: 'この件は相互理解と誠実なコミュニケーションが重要です。',
+      speech: '調停案をまとめました。',
+      plaintiff_feeling: `${G.plaintiff}さんは気持ちを伝えたかったようです。`,
+      defendant_feeling: `${G.defendant}さんにも事情があったようです。`,
+      common_ground: 'お互い相手のことを大切に思っています。',
+      proposal: 'お互いの気持ちを定期的に話し合う機会を設けましょう。',
+      advice: 'まずは「ありがとう」「ごめんね」の一言から始めてみてください。',
     };
     G.verdict = vd;
 
     if (G.caseId) {
       updateCase(G.caseId, {
-        verdict: vd.reason,
-        winner: vd.winner,
+        verdict: vd.proposal,
+        winner: 'mediation',
         finished_at: new Date().toISOString(),
       }).catch(() => {});
     }
@@ -299,15 +309,15 @@ export function useGameFlow(setScreen, roomId) {
   const runAppeal = useCallback(async () => {
     G.appealCount++;
     G.history = []; G.exchanges = []; G.round = 0;
-    setStageLabel(`控訴審 第${G.appealCount}回`);
+    setStageLabel(`再調停 第${G.appealCount}回`);
     setCourtAction(null);
     appendMsg({ type: 'loading', id: 'ap' });
     const p = await ai(
-      `控訴が申し立てられました（第${G.appealCount}回）。控訴審の開始を宣言し、前回の判決に対して改めて審理する旨を伝えてください。`,
-      '{"speech":"控訴審開始の宣言（2文）"}'
+      `再調停の申し立てがありました（第${G.appealCount}回）。もう一度話し合いの場を設ける旨を伝えてください。`,
+      '{"speech":"再調停開始の言葉（2文）"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'ap')));
-    if (p) appendMsg({ type: 'judge', text: p.speech || `第${G.appealCount}回控訴審を開始します。`, judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
+    if (p) appendMsg({ type: 'judge', text: p.speech, judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
     setCourtAction({ type: 'start-round' });
   }, [G, ai, appendMsg]);
 

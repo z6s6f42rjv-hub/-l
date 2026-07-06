@@ -30,27 +30,27 @@ export default function CourtScreen({
     if (!courtAction) return null;
     switch (courtAction.type) {
       case 'start-round':
-        return <button className="btn" onClick={onStartRound}>審理を開始する　▶</button>;
+        return <button className="btn" onClick={onStartRound}>話し合いを始める　▶</button>;
       case 'next-round':
         return <button className="btn" onClick={onNextRound}>第{courtAction.round}ターンへ進む　▶</button>;
       case 'next-or-final':
         return (
           <div className="btns two">
-            <button className="btn btn-outline" onClick={onNextRound}>さらに審理する</button>
-            <button className="btn" onClick={onFinal}>最終弁論へ　▶</button>
+            <button className="btn btn-outline" onClick={onNextRound}>もう少し話し合う</button>
+            <button className="btn" onClick={onFinal}>最終発言へ　▶</button>
           </div>
         );
       case 'go-lawyer':
         return (
           <div className="btns two">
-            <button className="btn btn-outline" onClick={onFinal}>そのまま最終弁論</button>
-            <button className="btn" onClick={onLawyer}>🤖 AI弁護士に相談　▶</button>
+            <button className="btn btn-outline" onClick={onFinal}>そのまま最終発言</button>
+            <button className="btn" onClick={onLawyer}>🤖 気持ちを整理する　▶</button>
           </div>
         );
       case 'go-final':
-        return <button className="btn" onClick={onFinal}>最終弁論へ　▶</button>;
+        return <button className="btn" onClick={onFinal}>最終発言へ　▶</button>;
       case 'go-verdict':
-        return <button className="btn" onClick={onVerdict}>判決を下す　▶</button>;
+        return <button className="btn" onClick={onVerdict}>調停案を出す　▶</button>;
       case 'verdict':
         return (
           <VerdictDisplay

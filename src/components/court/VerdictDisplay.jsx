@@ -2,13 +2,9 @@ import { useState } from 'react';
 
 export default function VerdictDisplay({ verdict, plaintiff, defendant, caseNum, appealCount, onAppeal, onRestart, onStats, roomId }) {
   const [shareVisible, setShareVisible] = useState(false);
-  const isP = verdict.winner === 'plaintiff';
-  const winName = isP ? plaintiff : defendant;
-  const pS = parseInt(verdict.plaintiff_score) || 50;
-  const dS = parseInt(verdict.defendant_score) || 50;
 
   const copyText = () => {
-    const t = `【AI裁判所 判決】\n${caseNum}\n${plaintiff} vs ${defendant}\n判決：${winName} の勝訴\n（原告${pS}pt / 被告${dS}pt）\n命令：${verdict.order || '—'}\n#AI裁判所`;
+    const t = `【AI調停所 調停案】\n${caseNum}\n${plaintiff} & ${defendant}\n\n調停案：${verdict.proposal || '—'}\n\nアドバイス：${verdict.advice || '—'}\n#AI調停所`;
     navigator.clipboard.writeText(t).then(() => alert('コピーしました'));
   };
 
@@ -17,58 +13,56 @@ export default function VerdictDisplay({ verdict, plaintiff, defendant, caseNum,
       {shareVisible && (
         <div>
           <div className="share-card">
-            <div className="share-ttl">AI 裁 判 所 ｜ 判 決 書</div>
-            <div className="share-result">{winName} の勝訴</div>
+            <div className="share-ttl">AI 調 停 所 ｜ 調 停 案</div>
+            <div className="share-result">調停成立</div>
             <div className="share-det">
-              {plaintiff}（{pS}pt） vs {defendant}（{dS}pt）<br />
-              件名：{verdict.trouble}<br />
-              命令：{verdict.order || '—'}
+              {plaintiff} & {defendant}<br />
+              {verdict.proposal}
             </div>
             <div className="share-foot">{caseNum}</div>
           </div>
-          <button className="btn btn-sm btn-ghost" style={{ marginTop: '.4rem' }} onClick={copyText}>判決文をコピー</button>
+          <button className="btn btn-sm btn-ghost" style={{ marginTop: '.4rem' }} onClick={copyText}>調停案をコピー</button>
         </div>
       )}
+
       <div className="verdict-card">
-        <div className="verdict-hdr">◆ 判 決 ◆</div>
+        <div className="verdict-hdr">◆ 調 停 案 ◆</div>
         <div className="verdict-body">
-          <div className={`verdict-winner ${isP ? 'pw' : 'dw'}`}>{winName} の勝訴</div>
-          <div className="scores-row">
-            <div className="score-box">
-              <div className="score-label">原告 説得力</div>
-              <div className="score-num pc">{pS}<span className="score-sub"> pt</span></div>
-              <div style={{ height: '4px', background: 'var(--border)', borderRadius: '2px', marginTop: '.3rem', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pS}%`, background: 'var(--P)', borderRadius: '2px' }} />
-              </div>
+          <div className="verdict-winner" style={{ fontSize: '1rem', color: 'var(--ink)' }}>調停成立 🤝</div>
+
+          {/* 両者の気持ち */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '.5rem', margin: '.8rem 0' }}>
+            <div style={{ background: 'var(--surface)', borderRadius: 6, padding: '.6rem .8rem', borderLeft: '3px solid var(--P)' }}>
+              <div style={{ fontSize: '.6rem', fontWeight: 700, marginBottom: '.2rem', opacity: .7 }}>{plaintiff}の気持ち</div>
+              <div style={{ fontSize: '.78rem', lineHeight: 1.6 }}>{verdict.plaintiff_feeling}</div>
             </div>
-            <div className="score-box">
-              <div className="score-label">被告 説得力</div>
-              <div className="score-num dc">{dS}<span className="score-sub"> pt</span></div>
-              <div style={{ height: '4px', background: 'var(--border)', borderRadius: '2px', marginTop: '.3rem', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${dS}%`, background: 'var(--D)', borderRadius: '2px' }} />
-              </div>
+            <div style={{ background: 'var(--surface)', borderRadius: 6, padding: '.6rem .8rem', borderLeft: '3px solid var(--D)' }}>
+              <div style={{ fontSize: '.6rem', fontWeight: 700, marginBottom: '.2rem', opacity: .7 }}>{defendant}の気持ち</div>
+              <div style={{ fontSize: '.78rem', lineHeight: 1.6 }}>{verdict.defendant_feeling}</div>
             </div>
           </div>
-          <div className="v-row"><strong>判決理由　</strong>{verdict.reason}</div>
-          <div className="v-row"><strong>裁判所命令　</strong>{verdict.order}</div>
-          {verdict.advice && <div className="v-row" style={{ background: 'rgba(0,0,0,.03)', borderRadius: 4, padding: '.4rem .6rem' }}><strong>💑 アドバイス　</strong>{verdict.advice}</div>}
-          <div className="v-stamp">{caseNum} — AI裁判所</div>
+
+          {verdict.common_ground && (
+            <div className="v-row" style={{ background: 'rgba(0,0,0,.03)', borderRadius: 4, padding: '.4rem .6rem' }}>
+              <strong>共通していたこと　</strong>{verdict.common_ground}
+            </div>
+          )}
+          <div className="v-row"><strong>調停案　</strong>{verdict.proposal}</div>
+          <div className="v-row"><strong>💑 アドバイス　</strong>{verdict.advice}</div>
+          <div className="v-stamp">{caseNum} — AI調停所</div>
         </div>
       </div>
-      <div className="law-box">
-        <div className="law-title">▶ 関連法律の解説</div>
-        <div className="law-text">{verdict.law_note}</div>
-      </div>
-      <div style={{ fontSize: '.6rem', color: 'var(--gray)', textAlign: 'center' }}>控訴回数：{appealCount} / 3</div>
+
+      <div style={{ fontSize: '.6rem', color: 'var(--gray)', textAlign: 'center' }}>再調停回数：{appealCount} / 3</div>
       <div className="btns two">
         {appealCount < 3
-          ? <button className="btn btn-outline" onClick={onAppeal}>控　訴　する</button>
-          : <button className="btn" disabled>控訴不可</button>
+          ? <button className="btn btn-outline" onClick={onAppeal}>再調停する</button>
+          : <button className="btn" disabled>再調停不可</button>
         }
-        <button className="btn btn-gold" onClick={() => setShareVisible(v => !v)}>判決をシェア</button>
+        <button className="btn btn-gold" onClick={() => setShareVisible(v => !v)}>調停案をシェア</button>
       </div>
       <div className="btns two">
-        <button className="btn btn-ghost" style={{ borderColor: 'var(--border)' }} onClick={onRestart}>もう一度あらそう</button>
+        <button className="btn btn-ghost" style={{ borderColor: 'var(--border)' }} onClick={onRestart}>もう一度話し合う</button>
         {roomId && onStats && <button className="btn btn-outline" onClick={onStats}>📊 記録を見る</button>}
       </div>
     </div>
