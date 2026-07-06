@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useGameFlow } from './hooks/useGameFlow';
+import LandingScreen from './components/LandingScreen';
 import WizardScreen from './components/wizard/WizardScreen';
 import PassScreen from './components/PassScreen';
 import InputScreen from './components/InputScreen';
 import CourtScreen from './components/court/CourtScreen';
 
 export default function App() {
-  const [screen, setScreen] = useState('wizard');
+  const [screen, setScreen] = useState('landing');
 
   const {
     messages, courtAction, stageLabel, roundDots,
@@ -25,6 +26,9 @@ export default function App() {
     ? { ...inputState, name: inputState.role === 'plaintiff' ? G.plaintiff : G.defendant }
     : null;
 
+  if (screen === 'landing') {
+    return <LandingScreen onStart={() => setScreen('wizard')} />;
+  }
   if (screen === 'wizard') {
     return <WizardScreen onStart={runOpening} />;
   }
@@ -46,7 +50,7 @@ export default function App() {
       onFinal={runFinal}
       onVerdict={runVerdict}
       onAppeal={runAppeal}
-      onRestart={() => setScreen('wizard')}
+      onRestart={() => setScreen('landing')}
     />
   );
 }
