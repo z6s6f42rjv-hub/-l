@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export default function VerdictDisplay({ verdict, plaintiff, defendant, caseNum, appealCount, onAppeal, onRestart }) {
+export default function VerdictDisplay({ verdict, plaintiff, defendant, caseNum, appealCount, onAppeal, onRestart, onStats, roomId }) {
   const [shareVisible, setShareVisible] = useState(false);
   const isP = verdict.winner === 'plaintiff';
   const winName = isP ? plaintiff : defendant;
@@ -51,6 +51,7 @@ export default function VerdictDisplay({ verdict, plaintiff, defendant, caseNum,
           </div>
           <div className="v-row"><strong>判決理由　</strong>{verdict.reason}</div>
           <div className="v-row"><strong>裁判所命令　</strong>{verdict.order}</div>
+          {verdict.advice && <div className="v-row" style={{ background: 'rgba(0,0,0,.03)', borderRadius: 4, padding: '.4rem .6rem' }}><strong>💑 アドバイス　</strong>{verdict.advice}</div>}
           <div className="v-stamp">{caseNum} — AI裁判所</div>
         </div>
       </div>
@@ -66,7 +67,10 @@ export default function VerdictDisplay({ verdict, plaintiff, defendant, caseNum,
         }
         <button className="btn btn-gold" onClick={() => setShareVisible(v => !v)}>判決をシェア</button>
       </div>
-      <button className="btn btn-ghost" style={{ borderColor: 'var(--border)' }} onClick={onRestart}>もう一度あらそう</button>
+      <div className="btns two">
+        <button className="btn btn-ghost" style={{ borderColor: 'var(--border)' }} onClick={onRestart}>もう一度あらそう</button>
+        {roomId && onStats && <button className="btn btn-outline" onClick={onStats}>📊 記録を見る</button>}
+      </div>
     </div>
   );
 }

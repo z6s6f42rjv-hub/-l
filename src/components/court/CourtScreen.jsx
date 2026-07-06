@@ -6,7 +6,7 @@ import { MsgJudge, MsgPlaintiff, MsgDefendant, MsgSys, MsgLoading, CaseCard } fr
 
 export default function CourtScreen({
   messages, courtAction, stageLabel, roundDots, caseNum,
-  onStartRound, onNextRound, onFinal, onVerdict, onAppeal, onRestart,
+  onStartRound, onNextRound, onFinal, onLawyer, onVerdict, onAppeal, onRestart, onStats, roomId,
 }) {
   const bottomRef = useRef(null);
 
@@ -40,6 +40,13 @@ export default function CourtScreen({
             <button className="btn" onClick={onFinal}>最終弁論へ　▶</button>
           </div>
         );
+      case 'go-lawyer':
+        return (
+          <div className="btns two">
+            <button className="btn btn-outline" onClick={onFinal}>そのまま最終弁論</button>
+            <button className="btn" onClick={onLawyer}>🤖 AI弁護士に相談　▶</button>
+          </div>
+        );
       case 'go-final':
         return <button className="btn" onClick={onFinal}>最終弁論へ　▶</button>;
       case 'go-verdict':
@@ -54,6 +61,8 @@ export default function CourtScreen({
             appealCount={courtAction.appealCount}
             onAppeal={onAppeal}
             onRestart={onRestart}
+            onStats={onStats}
+            roomId={roomId}
           />
         );
       default: return null;
