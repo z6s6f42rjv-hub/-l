@@ -119,8 +119,9 @@ export function useGameFlow(setScreen, roomId) {
     setCourtAction(null);
 
     appendMsg({ type: 'loading', id: 'round' });
+    const focusNote = G.lastAnalysis ? `前のターンの分析：「${G.lastAnalysis}」。この論点を踏まえて質問を考えること。` : '';
     const plan = await ai(
-      `第${G.round}ターンの審理を開始します。まず原告「${G.plaintiff}」から話を聞きます。原告への最初の質問を生成してください。核心を突く質問を1つ。相手の気持ちや意図を掘り下げる質問が望ましい。`,
+      `第${G.round}ターンの審理を開始します。${focusNote}まず原告「${G.plaintiff}」から話を聞きます。核心を突く質問を1つ。相手の気持ちや意図を掘り下げる質問が望ましい。`,
       '{"plaintiff_question":"原告への質問","note":"この質問の意図（内部メモ）"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'round')));
@@ -164,11 +165,13 @@ export function useGameFlow(setScreen, roomId) {
   const afterRound = useCallback(async () => {
     appendMsg({ type: 'loading', id: 'eval' });
     const p = await ai(
-      '両者の回答を受けて、裁判長として中立的な立場からコメントしてください。どちらかを一方的に責めず、両方の気持ちを汲みながら、お互いが理解し合えるようなコメントをしてください。',
-      '{"speech":"裁判長のコメント（3文以内）","needs_more":"まだ不明な点があればtrue、なければfalse"}'
+      '両者の回答を受けて、裁判長として中立的な立場で分析してください。①それぞれの主張の核心、②まだ明らかになっていない論点、③次に掘り下げるべきポイントを整理した上で、両者に向けたコメントをしてください。',
+      '{"speech":"裁判長のコメント（3文以内）","next_focus":"次のターンで掘り下げるべき論点（内部メモ）","needs_more":"まだ不明な点があればtrue、なければfalse"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'eval')));
     if (p) appendMsg({ type: 'judge', text: p.speech || '両者の主張を確認しました。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
+
+    G.lastAnalysis = p?.next_focus || '';
 
     if (G.round < G.maxRounds) {
       if (p?.needs_more !== false) {
