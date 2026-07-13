@@ -6,27 +6,50 @@ import PassScreen from './components/PassScreen';
 import InputScreen from './components/InputScreen';
 import CourtScreen from './components/court/CourtScreen';
 import StatsScreen from './components/StatsScreen';
+import RolePickScreen from './components/RolePickScreen';
+import RespondScreen from './components/RespondScreen';
+import WaitingScreen from './components/WaitingScreen';
 
 function getRoomFromURL() {
   return new URLSearchParams(window.location.search).get('room');
 }
 
-export default function App() {
-  const [screen, setScreen] = useState('landing');
-  const [roomId, setRoomId] = useState(() => getRoomFromURL() || null);
+function getStorageKey(roomId, key) {
+  return `ai_court_${key}_${roomId}`;
+}
 
-  useEffect(() => {
-    if (roomId && screen === 'landing') {
-      setScreen('wizard');
+export default function App() {
+  const urlRoom = getRoomFromURL();
+  const [roomId, setRoomId] = useState(urlRoom || null);
+
+  // このデバイスがホスト（設定した側）かどうか
+  const isHost = roomId ? !!sessionStorage.getItem(getStorageKey(roomId, 'host')) : true;
+
+  // このデバイスのロール（ゲスト用）
+  const [myRole, setMyRole] = useState(() => {
+    if (!urlRoom) return null;
+    return sessionStorage.getItem(getStorageKey(urlRoom, 'role')) || null;
+  });
+  const [myName, setMyName] = useState(() => {
+    if (!urlRoom) return null;
+    return sessionStorage.getItem(getStorageKey(urlRoom, 'name')) || null;
+  });
+
+  const [screen, setScreen] = useState(() => {
+    if (urlRoom && !sessionStorage.getItem(getStorageKey(urlRoom, 'host'))) {
+      return 'guest';
     }
-  }, []);
+    return 'landing';
+  });
+
+  const [waitingFor, setWaitingFor] = useState('');
 
   const {
     messages, courtAction, stageLabel, roundDots,
     passState, inputState,
     runOpening, runNextRound, runFinal, runLawyer, runVerdict, runAppeal,
     getGameState,
-  } = useGameFlow(setScreen, roomId);
+  } = useGameFlow(setScreen, roomId, setWaitingFor);
 
   const G = getGameState();
 
@@ -40,13 +63,42 @@ export default function App() {
 
   const handleStart = (room) => {
     setRoomId(room);
+    // ホストとして記録
+    sessionStorage.setItem(getStorageKey(room, 'host'), '1');
+    sessionStorage.setItem(getStorageKey(room, 'role'), 'plaintiff');
+    window.history.pushState({}, '', `/?room=${room}`);
     setScreen('wizard');
   };
 
-  if (screen === 'landing') return <LandingScreen onStart={handleStart} initialRoom={roomId} />;
+  const handleRolePick = (role, caseData) => {
+    setMyRole(role);
+    const name = role === 'plaintiff'
+      ? (caseData.plaintiff_name || caseData.plaintiff)
+      : (caseData.defendant_name || caseData.defendant);
+    setMyName(name);
+    sessionStorage.setItem(getStorageKey(roomId, 'role'), role);
+    sessionStorage.setItem(getStorageKey(roomId, 'name'), name);
+    setScreen('respond');
+  };
+
+  // ゲストフロー
+  if (screen === 'guest' || (!isHost && urlRoom)) {
+    if (!myRole) {
+      return <RolePickScreen roomId={roomId} onPick={handleRolePick} />;
+    }
+    return <RespondScreen roomId={roomId} myRole={myRole} myName={myName} />;
+  }
+
+  if (screen === 'respond') {
+    return <RespondScreen roomId={roomId} myRole={myRole} myName={myName} />;
+  }
+
+  // ホストフロー
+  if (screen === 'landing') return <LandingScreen onStart={handleStart} />;
   if (screen === 'wizard') return <WizardScreen onStart={(data) => runOpening(data, roomId)} roomId={roomId} />;
   if (screen === 'pass') return <PassScreen passState={passWithName} caseNum={G.caseNum} onReady={() => passState?.cb()} />;
   if (screen === 'input') return <InputScreen inputState={inputWithName} caseNum={G.caseNum} onSubmit={(val) => inputState?.cb(val)} />;
+  if (screen === 'waiting') return <WaitingScreen waitingFor={waitingFor} roomId={roomId} />;
   if (screen === 'stats') return <StatsScreen roomId={roomId} onBack={() => setScreen('landing')} />;
 
   return (

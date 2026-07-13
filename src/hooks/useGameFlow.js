@@ -1,13 +1,13 @@
 import { useState, useRef, useCallback } from 'react';
 import { JUDGES } from '../constants';
 import { buildSystemPrompt, callAI } from '../api';
-import { getOrCreateRoom, saveCase, updateCase, saveExchange } from '../lib/supabase';
+import { getOrCreateRoom, saveCase, updateCase, saveExchange, createPendingTurn, pollForAnswer } from '../lib/supabase';
 
 function genCaseNum() {
   return `調停第${Math.floor(Math.random() * 900 + 100)}号`;
 }
 
-export function useGameFlow(setScreen, roomId) {
+export function useGameFlow(setScreen, roomId, setWaitingFor) {
   const [messages, setMessages] = useState([]);
   const [courtAction, setCourtAction] = useState(null);
   const [stageLabel, setStageLabel] = useState('開始');
@@ -40,11 +40,32 @@ export function useGameFlow(setScreen, roomId) {
   }, [setScreen]);
 
   const showInputScreen = useCallback((role, questionText, labelText, choices, cb) => {
-    setInputState({ role, questionText, labelText, choices: choices || [] });
+    // ルームがあり、相手（被告）の番なら別デバイス経由
+    if (roomId && role === 'defendant') {
+      const opponentName = G.defendant;
+      setWaitingFor?.(opponentName);
+      createPendingTurn(roomId, G.caseId, role, questionText, choices || [])
+        .then(turn => {
+          setScreen('waiting');
+          const poll = setInterval(async () => {
+            const answer = await pollForAnswer(turn.id);
+            if (answer) {
+              clearInterval(poll);
+              setScreen('court');
+              cb(answer);
+            }
+          }, 2500);
+        })
+        .catch(() => {
+          // フォールバック：通常のInputScreen
+          setInputState({ role, questionText, labelText, choices: choices || [], cb });
+          setScreen('input');
+        });
+      return;
+    }
+    setInputState({ role, questionText, labelText, choices: choices || [], cb });
     setScreen('input');
-    // cbをrefで保持してスクリーン遷移後も使える状態にする
-    setInputState(prev => ({ ...prev, cb }));
-  }, [setScreen]);
+  }, [setScreen, roomId, G, setWaitingFor]);
 
   const ai = useCallback(async (instruction, format) => {
     const sys = buildSystemPrompt(G);
