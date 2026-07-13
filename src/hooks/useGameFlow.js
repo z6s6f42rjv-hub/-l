@@ -291,20 +291,24 @@ export function useGameFlow(setScreen, roomId, setWaitingFor) {
     appendMsg({ type: 'judge', text: '両者の気持ちを十分に聞きました。調停案をまとめます。', judgeEmoji: G.judgeEmoji, judgeName: G.judgeName });
     appendMsg({ type: 'loading', id: 'vd' });
 
-    const summary = G.exchanges.map((e) => `${e.role === 'plaintiff' ? G.plaintiff : G.defendant}：「${e.answer}」`).join(' / ');
+    const exchangeDetail = G.exchanges.map((e, i) =>
+      `[${i + 1}] ${e.role === 'plaintiff' ? G.plaintiff : G.defendant}への質問「${e.question}」→ 回答「${e.answer}」`
+    ).join('\n');
+
     const p = await ai(
-      `全ての発言を踏まえて調停案をまとめてください。\n発言の要約：${summary}\n\n勝ち負けではなく、両者が納得できる合意・歩み寄りの提案をしてください。`,
-      '{"speech":"調停員の締めの言葉（2〜3文）","plaintiff_feeling":"申立人の気持ちの要約（1文）","defendant_feeling":"相手方の気持ちの要約（1文）","common_ground":"お互いに共通していた部分（1文）","proposal":"具体的な調停案・合意提案（2〜3文）","advice":"今後の関係改善へのアドバイス（2文）"}'
+      `今回の相談内容：「${G.trouble}」\n\n全発言の詳細：\n${exchangeDetail}\n\n【重要な指示】\n・上記の発言内容を具体的に引用して分析すること。「〜さんは気持ちを伝えたかった」のような抽象的・汎用的な表現は絶対に使わない。\n・それぞれが実際に言った言葉・具体的なエピソードに基づいて気持ちを要約する。\n・調停案は「話し合いの機会を設ける」のような曖昧なものではなく、この2人の具体的な状況に合わせた行動レベルの提案にする（例：「毎週日曜の夜に家事の分担を話し合う15分を設ける」など）。\n・アドバイスも一般論ではなく、この2人のやり取りから見えた課題に特化した内容にする。`,
+      '{"speech":"調停員の締めの言葉（2〜3文、具体的な内容に触れる）","plaintiff_feeling":"申立人が実際に言った内容を踏まえた気持ちの要約（具体的に）","defendant_feeling":"相手方が実際に言った内容を踏まえた気持ちの要約（具体的に）","common_ground":"やり取りから見えた共通点や根本にある気持ち","proposal":"この2人の具体的な状況に合わせた行動レベルの調停案（2〜3文）","advice":"このカップルの具体的なすれ違いパターンへのアドバイス（2文）","assessment":"どちらの主張がより理解できるか・なぜかの率直な評価（1〜2文）"}'
     );
     setMessages((prev) => prev.filter((m) => !(m.type === 'loading' && m.id === 'vd')));
 
     const vd = p || {
       speech: '調停案をまとめました。',
-      plaintiff_feeling: `${G.plaintiff}さんは気持ちを伝えたかったようです。`,
-      defendant_feeling: `${G.defendant}さんにも事情があったようです。`,
-      common_ground: 'お互い相手のことを大切に思っています。',
-      proposal: 'お互いの気持ちを定期的に話し合う機会を設けましょう。',
-      advice: 'まずは「ありがとう」「ごめんね」の一言から始めてみてください。',
+      plaintiff_feeling: G.exchanges.find(e => e.role === 'plaintiff')?.answer || '発言内容を確認してください。',
+      defendant_feeling: G.exchanges.find(e => e.role === 'defendant')?.answer || '発言内容を確認してください。',
+      common_ground: 'やり取りの中に共通する思いが見えました。',
+      proposal: '今回の具体的な状況をもとに、お互いが行動できる提案をまとめました。',
+      advice: 'まずは今回話し合えたことを一歩前進と捉えてください。',
+      assessment: '今回のやり取りを踏まえた見解です。',
     };
     G.verdict = vd;
 

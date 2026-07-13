@@ -47,6 +47,11 @@ export default function VerdictDisplay({ verdict, plaintiff, defendant, caseNum,
               <strong>共通していたこと　</strong>{verdict.common_ground}
             </div>
           )}
+          {verdict.assessment && (
+            <div className="v-row" style={{ background: 'rgba(180,140,60,.08)', borderRadius: 4, padding: '.4rem .6rem', borderLeft: '3px solid var(--gold)' }}>
+              <strong>⚖️ 調停員の見解　</strong>{verdict.assessment}
+            </div>
+          )}
           <div className="v-row"><strong>調停案　</strong>{verdict.proposal}</div>
           <div className="v-row"><strong>💑 アドバイス　</strong>{verdict.advice}</div>
           <div className="v-stamp">{caseNum} — AI調停所</div>

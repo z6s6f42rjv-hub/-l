@@ -7,6 +7,7 @@ import { MsgJudge, MsgPlaintiff, MsgDefendant, MsgSys, MsgLoading, CaseCard } fr
 export default function CourtScreen({
   messages, courtAction, stageLabel, roundDots, caseNum,
   onStartRound, onNextRound, onFinal, onLawyer, onVerdict, onAppeal, onRestart, onStats, roomId,
+  trouble, plaintiff, defendant,
 }) {
   const bottomRef = useRef(null);
 
@@ -72,6 +73,21 @@ export default function CourtScreen({
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }} className="screen-anim">
       <Header sub={stageLabel} caseNum={caseNum} />
+      {/* 議題バナー：常に表示 */}
+      {trouble && (
+        <div style={{
+          background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+          padding: '.45rem 1rem', fontSize: '.68rem', color: 'var(--gray)',
+          display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap',
+          position: 'sticky', top: 0, zIndex: 10,
+        }}>
+          <span style={{ fontWeight: 700, color: 'var(--ink)', flexShrink: 0 }}>議題</span>
+          <span style={{ flex: 1 }}>「{trouble}」</span>
+          {plaintiff && defendant && (
+            <span style={{ flexShrink: 0, opacity: .7 }}>{plaintiff} vs {defendant}</span>
+          )}
+        </div>
+      )}
       <div className="page-wide">
         <div className="speech-wrap">
           {messages.map(renderMsg)}

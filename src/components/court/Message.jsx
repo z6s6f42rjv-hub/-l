@@ -13,7 +13,7 @@ export function MsgPlaintiff({ name, text }) {
     <div className="msg-p">
       <div className="msg-avatar pc">🙋</div>
       <div className="msg-body">
-        <div className="msg-who pc">{name}（原告）</div>
+        <div className="msg-who pc">{name}（申立人）</div>
         <div className="msg-bubble pc">{text}</div>
       </div>
     </div>
@@ -25,7 +25,7 @@ export function MsgDefendant({ name, text }) {
     <div className="msg-d">
       <div className="msg-avatar dc">🙋</div>
       <div className="msg-body">
-        <div className="msg-who dc">{name}（被告）</div>
+        <div className="msg-who dc">{name}（相手方）</div>
         <div className="msg-bubble dc">{text}</div>
       </div>
     </div>

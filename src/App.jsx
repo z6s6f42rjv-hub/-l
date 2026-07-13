@@ -98,7 +98,7 @@ export default function App() {
   if (screen === 'wizard') return <WizardScreen onStart={(data) => runOpening(data, roomId)} roomId={roomId} />;
   if (screen === 'pass') return <PassScreen passState={passWithName} caseNum={G.caseNum} onReady={() => passState?.cb()} />;
   if (screen === 'input') return <InputScreen inputState={inputWithName} caseNum={G.caseNum} onSubmit={(val) => inputState?.cb(val)} />;
-  if (screen === 'waiting') return <WaitingScreen waitingFor={waitingFor} roomId={roomId} />;
+  if (screen === 'waiting') return <WaitingScreen waitingFor={waitingFor} roomId={roomId} trouble={G.trouble} />;
   if (screen === 'stats') return <StatsScreen roomId={roomId} onBack={() => setScreen('landing')} />;
 
   return (
@@ -117,6 +117,9 @@ export default function App() {
       onRestart={() => setScreen('landing')}
       onStats={() => setScreen('stats')}
       roomId={roomId}
+      trouble={G.trouble}
+      plaintiff={G.plaintiff}
+      defendant={G.defendant}
     />
   );
 }
